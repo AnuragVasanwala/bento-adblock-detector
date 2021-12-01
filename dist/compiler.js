@@ -209,7 +209,7 @@
   }
   var termRegex = /[\w-]+/gm;
   function getNumTerms(str) {
-    return str.match(termRegex)?.length ?? 0;
+    return str?.match(termRegex)?.length ?? 0;
   }
   var toLower = (value) => value.toLowerCase();
   var toUpper = (value) => value.toUpperCase();
@@ -1077,8 +1077,8 @@
     gt: ">",
     quot: '"'
   };
-  function decodeEntities(html) {
-    return html.replace(/&(?:(#x?[\da-f]+)|([\w]+));?/gi, function(s, numericEntity, namedEntity) {
+  function decodeEntities(html2) {
+    return html2.replace(/&(?:(#x?[\da-f]+)|([\w]+));?/gi, function(s, numericEntity, namedEntity) {
       if (numericEntity) {
         let code = numericEntity.charAt(1).toLowerCase() === "x" ? parseInt(numericEntity.substr(2), 16) : parseInt(numericEntity.substr(1), 10);
         if (isNaN(code) || code > 1114111) {
@@ -1263,8 +1263,8 @@
       }
       return "";
     }
-    set innerHTML(html) {
-      const root = parse(html, this);
+    set innerHTML(html2) {
+      const root = parse(html2, this);
       this.childNodes.forEach((n) => {
         propagate$3(n, "isConnected", false);
         propagate$3(n, 45, n);
@@ -3310,7 +3310,9 @@
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       if (!isElementNode(node)) {
-        parent.appendChild(doc.createTextNode(node.value));
+        if (node.value) {
+          parent.appendChild(doc.createTextNode(node.value));
+        }
         continue;
       }
       if (node.tagid === getTagId("ZERO_LENGTH")) {
@@ -3372,9 +3374,32 @@
     return false;
   }
 
+  // src/core/mode/prod.js
+  function isProd() {
+    return true;
+  }
+
   // src/core/mode/minified.js
   function isMinified() {
     return false;
+  }
+
+  // src/core/mode/esm.js
+  function isEsm() {
+    if (isProd()) {
+      return false;
+    }
+    return self?.__AMP_MODE?.esm ?? false;
+  }
+
+  // src/core/types/object/index.js
+  var { hasOwnProperty: hasOwn_, toString: toString_ } = Object.prototype;
+  function map(opt_initial) {
+    const obj = Object.create(null);
+    if (opt_initial) {
+      Object.assign(obj, opt_initial);
+    }
+    return obj;
   }
 
   // src/core/types/array.js
@@ -3399,19 +3424,27 @@
     return removed;
   }
 
-  // src/core/types/object/index.js
-  var { hasOwnProperty: hasOwn_, toString: toString_ } = Object.prototype;
-  function map(opt_initial) {
-    const obj = Object.create(null);
-    if (opt_initial) {
-      Object.assign(obj, opt_initial);
+  // src/core/types/enum.js
+  function isEnumValue(enumObj, val) {
+    for (const k in enumObj) {
+      if (enumObj[k] === val) {
+        return true;
+      }
     }
-    return obj;
+    return false;
+  }
+
+  // src/core/types/string/index.js
+  function isString(s) {
+    return typeof s == "string";
   }
 
   // src/core/types/index.js
   function isElement(value) {
     return value?.nodeType == 1;
+  }
+  function isFiniteNumber(value) {
+    return typeof value === "number" && isFinite(value);
   }
 
   // src/core/error/message-helpers.js
@@ -3458,6 +3491,9 @@
   function assertElement(assertFn, shouldBeElement, opt_message) {
     return assertType_(assertFn, shouldBeElement, isElement(shouldBeElement), "Element expected", opt_message);
   }
+  function assertString(assertFn, shouldBeString, opt_message) {
+    return assertType_(assertFn, shouldBeString, isString(shouldBeString), "String expected", opt_message);
+  }
 
   // src/core/assert/dev.js
   function devAssertDceCheck() {
@@ -3479,61 +3515,43 @@
     devAssertDceCheck();
     return assertElement(devAssert, shouldBeElement, opt_message);
   }
+  function devAssertString(shouldBeString, opt_message) {
+    if (isMinified()) {
+      return shouldBeString;
+    }
+    devAssertDceCheck();
+    return assertString(devAssert, shouldBeString, opt_message);
+  }
 
   // src/core/assert/user.js
   function userAssert(shouldBeTruthy, opt_message, opt_1, opt_2, opt_3, opt_4, opt_5, opt_6, opt_7, opt_8, opt_9) {
     return assert(USER_ERROR_SENTINEL, shouldBeTruthy, opt_message, opt_1, opt_2, opt_3, opt_4, opt_5, opt_6, opt_7, opt_8, opt_9);
   }
 
-  // src/core/dom/layout/index.js
-  var Layout = {
-    NODISPLAY: "nodisplay",
-    FIXED: "fixed",
-    FIXED_HEIGHT: "fixed-height",
-    RESPONSIVE: "responsive",
-    CONTAINER: "container",
-    FILL: "fill",
-    FLEX_ITEM: "flex-item",
-    FLUID: "fluid",
-    INTRINSIC: "intrinsic"
-  };
-  function parseLayout(s) {
-    for (const k in Layout) {
-      if (Layout[k] == s) {
-        return Layout[k];
-      }
+  // third_party/css-escape/css-escape.js
+  var regex = /(\0)|^(-)$|([\x01-\x1f\x7f]|^-?[0-9])|([\x80-\uffff0-9a-zA-Z_-]+)|[^]/g;
+  function escaper(match, nil, dash, hexEscape, chars) {
+    if (chars) {
+      return chars;
     }
-    return void 0;
+    if (nil) {
+      return "\uFFFD";
+    }
+    if (hexEscape) {
+      return match.slice(0, -1) + "\\" + match.slice(-1).charCodeAt(0).toString(16) + " ";
+    }
+    return "\\" + match;
   }
-  function parseLength(s) {
-    if (typeof s == "number") {
-      return s + "px";
-    }
-    if (!s) {
-      return void 0;
-    }
-    if (!/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|cm|mm|q|in|pc|pt)?$/.test(s)) {
-      return void 0;
-    }
-    if (/^\d+(\.\d+)?$/.test(s)) {
-      return s + "px";
-    }
-    return s;
+  function cssEscape(value) {
+    return String(value).replace(regex, escaper);
   }
-  function assertLength(length) {
-    userAssert(/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|cm|mm|q|in|pc|pt)$/.test(length), "Invalid length value: %s", length);
-    return length;
-  }
-  function getLengthUnits(length) {
-    assertLength(length);
-    const m = userAssert(/[a-z]+/i.exec(length), "Failed to read units from %s", length);
-    return m[0];
-  }
-  function applyFillContent(element, opt_replacedContent) {
-    element.classList.add("i-amphtml-fill-content");
-    if (opt_replacedContent) {
-      element.classList.add("i-amphtml-replaced-content");
+
+  // src/core/dom/css-selectors.js
+  function escapeCssSelectorIdent(ident) {
+    if (isEsm()) {
+      return CSS.escape(ident);
     }
+    return cssEscape(ident);
   }
 
   // src/core/dom/query.js
@@ -3567,6 +3585,104 @@
       tagName = devAssertElement(nodeOrTagName).tagName;
     }
     return !!tagName && tagName.toLowerCase().startsWith("i-");
+  }
+
+  // src/core/dom/index.js
+  function removeChildren(parent) {
+    while (parent.firstChild) {
+      parent.removeChild(parent.firstChild);
+    }
+  }
+  function copyChildren(from, to) {
+    const frag = to.ownerDocument.createDocumentFragment();
+    for (let n = from.firstChild; n; n = n.nextSibling) {
+      frag.appendChild(n.cloneNode(true));
+    }
+    to.appendChild(frag);
+  }
+  function isServerRendered(element) {
+    return element.hasAttribute("i-amphtml-ssr");
+  }
+
+  // src/core/dom/layout/index.js
+  var Layout_Enum = {
+    NODISPLAY: "nodisplay",
+    FIXED: "fixed",
+    FIXED_HEIGHT: "fixed-height",
+    RESPONSIVE: "responsive",
+    CONTAINER: "container",
+    FILL: "fill",
+    FLEX_ITEM: "flex-item",
+    FLUID: "fluid",
+    INTRINSIC: "intrinsic"
+  };
+  function parseLayout(s) {
+    if (isEnumValue(Layout_Enum, s)) {
+      return s;
+    }
+    return void 0;
+  }
+  function getLayoutClass(layout) {
+    return "i-amphtml-layout-" + layout;
+  }
+  function isLayoutSizeDefined(layout) {
+    return layout == Layout_Enum.FIXED || layout == Layout_Enum.FIXED_HEIGHT || layout == Layout_Enum.RESPONSIVE || layout == Layout_Enum.FILL || layout == Layout_Enum.FLEX_ITEM || layout == Layout_Enum.FLUID || layout == Layout_Enum.INTRINSIC;
+  }
+  function parseLength(s) {
+    if (typeof s == "number") {
+      return s + "px";
+    }
+    if (!s) {
+      return void 0;
+    }
+    if (!/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|cm|mm|q|in|pc|pt)?$/.test(s)) {
+      return void 0;
+    }
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      return s + "px";
+    }
+    return s;
+  }
+  function assertLength(length) {
+    userAssert(/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|cm|mm|q|in|pc|pt)$/.test(length), "Invalid length value: %s", length);
+    return length;
+  }
+  function getLengthUnits(length) {
+    assertLength(length);
+    const m = userAssert(/[a-z]+/i.exec(length), "Failed to read units from %s", length);
+    return m[0];
+  }
+  function getLengthNumeral(length) {
+    const res = parseFloat(length);
+    return isFiniteNumber(res) ? res : void 0;
+  }
+  function applyFillContent(element, opt_replacedContent) {
+    element.classList.add("i-amphtml-fill-content");
+    if (opt_replacedContent) {
+      element.classList.add("i-amphtml-replaced-content");
+    }
+  }
+
+  // src/core/dom/static-template.js
+  var htmlContainer;
+  function htmlFor(nodeOrDoc) {
+    const doc = nodeOrDoc.ownerDocument || nodeOrDoc;
+    if (!htmlContainer || htmlContainer.ownerDocument !== doc) {
+      htmlContainer = doc.createElement("div");
+    }
+    return html;
+  }
+  function html(strings) {
+    return createNode(htmlContainer, strings);
+  }
+  function createNode(container, strings) {
+    devAssert(strings.length === 1, "Improper html template tag usage.");
+    container.innerHTML = strings[0];
+    const el = container.firstElementChild;
+    devAssert(el, "No elements in template");
+    devAssert(!el.nextElementSibling, "Too many root elements in template");
+    container.removeChild(el);
+    return el;
   }
 
   // src/core/dom/style.js
@@ -3624,6 +3740,16 @@
       setStyle(element, k, styles[k]);
     }
   }
+  function toggle(element, opt_display) {
+    if (opt_display === void 0) {
+      opt_display = element.hasAttribute("hidden");
+    }
+    if (opt_display) {
+      element.removeAttribute("hidden");
+    } else {
+      element.setAttribute("hidden", "");
+    }
+  }
   function isVar(property) {
     return property.startsWith("--");
   }
@@ -3660,6 +3786,69 @@
     }
     return naturalDimensions_[tagName];
   }
+  function applyStaticLayout(element) {
+    const completedLayoutAttr = element.getAttribute("i-amphtml-layout");
+    if (completedLayoutAttr) {
+      const layout2 = devAssert(parseLayout(completedLayoutAttr));
+      if ((layout2 == Layout_Enum.RESPONSIVE || layout2 == Layout_Enum.INTRINSIC) && element.firstElementChild) {
+        element.sizerElement = element.querySelector("i-amphtml-sizer") || void 0;
+        element.sizerElement?.setAttribute("slot", "i-amphtml-svc");
+      } else if (layout2 == Layout_Enum.NODISPLAY) {
+        toggle(element, false);
+      }
+      return layout2;
+    }
+    const { height, layout, width } = getEffectiveLayoutInternal(element);
+    element.classList.add(getLayoutClass(layout));
+    if (isLayoutSizeDefined(layout)) {
+      element.classList.add("i-amphtml-layout-size-defined");
+    }
+    if (layout == Layout_Enum.NODISPLAY) {
+      toggle(element, false);
+    } else if (layout == Layout_Enum.FIXED) {
+      setStyles(element, {
+        width: devAssertString(width),
+        height: devAssertString(height)
+      });
+    } else if (layout == Layout_Enum.FIXED_HEIGHT) {
+      setStyle(element, "height", devAssertString(height));
+    } else if (layout == Layout_Enum.RESPONSIVE) {
+      const sizer = element.ownerDocument.createElement("i-amphtml-sizer");
+      sizer.setAttribute("slot", "i-amphtml-svc");
+      setStyles(sizer, {
+        paddingTop: getLengthNumeral(height) / getLengthNumeral(width) * 100 + "%"
+      });
+      element.insertBefore(sizer, element.firstChild);
+      element.sizerElement = sizer;
+    } else if (layout == Layout_Enum.INTRINSIC) {
+      const sizer = htmlFor(element)`
+      <i-amphtml-sizer class="i-amphtml-sizer" slot="i-amphtml-svc">
+        <img alt="" role="presentation" aria-hidden="true"
+             class="i-amphtml-intrinsic-sizer" />
+      </i-amphtml-sizer>`;
+      const intrinsicSizer = sizer.firstElementChild;
+      intrinsicSizer.setAttribute("src", `data:image/svg+xml;charset=utf-8,<svg height="${height}" width="${width}" xmlns="http://www.w3.org/2000/svg" version="1.1"/>`);
+      element.insertBefore(sizer, element.firstChild);
+      element.sizerElement = sizer;
+    } else if (layout == Layout_Enum.FILL) {
+    } else if (layout == Layout_Enum.CONTAINER) {
+    } else if (layout == Layout_Enum.FLEX_ITEM) {
+      if (width) {
+        setStyle(element, "width", width);
+      }
+      if (height) {
+        setStyle(element, "height", height);
+      }
+    } else if (layout == Layout_Enum.FLUID) {
+      element.classList.add("i-amphtml-layout-awaiting-size");
+      if (width) {
+        setStyle(element, "width", width);
+      }
+      setStyle(element, "height", 0);
+    }
+    element.setAttribute("i-amphtml-layout", layout);
+    return layout;
+  }
   function getEffectiveLayout(element) {
     const completedLayout = parseLayout(element.getAttribute("layout"));
     if (completedLayout) {
@@ -3682,9 +3871,9 @@
     let width;
     let height;
     let layout;
-    if ((!inputLayout || inputLayout == Layout.FIXED || inputLayout == Layout.FIXED_HEIGHT) && (!inputWidth || !inputHeight) && hasNaturalDimensions(element.tagName)) {
+    if ((!inputLayout || inputLayout == Layout_Enum.FIXED || inputLayout == Layout_Enum.FIXED_HEIGHT) && (!inputWidth || !inputHeight) && hasNaturalDimensions(element.tagName)) {
       const dimensions = getNaturalDimensions(element);
-      width = inputWidth || inputLayout == Layout.FIXED_HEIGHT ? inputWidth : dimensions.width;
+      width = inputWidth || inputLayout == Layout_Enum.FIXED_HEIGHT ? inputWidth : dimensions.width;
       height = inputHeight || dimensions.height;
     } else {
       width = inputWidth;
@@ -3693,26 +3882,26 @@
     if (inputLayout) {
       layout = inputLayout;
     } else if (!width && !height) {
-      layout = Layout.CONTAINER;
+      layout = Layout_Enum.CONTAINER;
     } else if (height == "fluid") {
-      layout = Layout.FLUID;
+      layout = Layout_Enum.FLUID;
     } else if (height && (!width || width == "auto")) {
-      layout = Layout.FIXED_HEIGHT;
+      layout = Layout_Enum.FIXED_HEIGHT;
     } else if (height && width && (sizesAttr || heightsAttr)) {
-      layout = Layout.RESPONSIVE;
+      layout = Layout_Enum.RESPONSIVE;
     } else {
-      layout = Layout.FIXED;
+      layout = Layout_Enum.FIXED;
     }
-    if (layout == Layout.FIXED || layout == Layout.FIXED_HEIGHT || layout == Layout.RESPONSIVE || layout == Layout.INTRINSIC) {
+    if (layout == Layout_Enum.FIXED || layout == Layout_Enum.FIXED_HEIGHT || layout == Layout_Enum.RESPONSIVE || layout == Layout_Enum.INTRINSIC) {
       userAssert(height, 'The "height" attribute is missing: %s', element);
     }
-    if (layout == Layout.FIXED_HEIGHT) {
+    if (layout == Layout_Enum.FIXED_HEIGHT) {
       userAssert(!width || width == "auto", 'The "width" attribute must be missing or "auto": %s', element);
     }
-    if (layout == Layout.FIXED || layout == Layout.RESPONSIVE || layout == Layout.INTRINSIC) {
+    if (layout == Layout_Enum.FIXED || layout == Layout_Enum.RESPONSIVE || layout == Layout_Enum.INTRINSIC) {
       userAssert(width && width != "auto", 'The "width" attribute must be present and not "auto": %s', element);
     }
-    if (layout == Layout.RESPONSIVE || layout == Layout.INTRINSIC) {
+    if (layout == Layout_Enum.RESPONSIVE || layout == Layout_Enum.INTRINSIC) {
       userAssert(getLengthUnits(width) == getLengthUnits(height), 'Length units should be the same for "width" and "height": %s, %s, %s', widthAttr, heightAttr, element);
     } else {
       userAssert(heightsAttr === null, '"heights" attribute must be missing: %s', element);
@@ -3722,8 +3911,11 @@
 
   // src/builtins/amp-layout/build-dom.js
   function buildDom(element) {
+    if (isServerRendered(element)) {
+      return;
+    }
     const layout = getEffectiveLayout(element);
-    if (layout == Layout.CONTAINER) {
+    if (layout == Layout_Enum.CONTAINER) {
       return;
     }
     const doc = element.ownerDocument;
@@ -3735,25 +3927,14 @@
     element.appendChild(container);
   }
 
-  // src/core/dom/index.js
-  function removeChildren(parent) {
-    while (parent.firstChild) {
-      parent.removeChild(parent.firstChild);
-    }
-  }
-  function copyChildren(from, to) {
-    const frag = to.ownerDocument.createDocumentFragment();
-    for (let n = from.firstChild; n; n = n.nextSibling) {
-      frag.appendChild(n.cloneNode(true));
-    }
-    to.appendChild(frag);
-  }
-
   // extensions/amp-fit-text/0.1/build-dom.js
   var MEASURER_CLASS = "i-amphtml-fit-text-measurer";
   var CONTENT_CLASS = "i-amphtml-fit-text-content";
   var CONTENT_WRAPPER_CLASS = "i-amphtml-fit-text-content-wrapper";
   function buildDom2(element) {
+    if (isServerRendered(element)) {
+      return queryDom(element);
+    }
     const doc = element.ownerDocument;
     const content = doc.createElement("div");
     applyFillContent(content);
@@ -3769,13 +3950,22 @@
     element.appendChild(measurer);
     return { content, contentWrapper, measurer };
   }
+  function queryDom(element) {
+    const content = element.querySelector(`.${escapeCssSelectorIdent(CONTENT_CLASS)}`);
+    const contentWrapper = element.querySelector(`.${escapeCssSelectorIdent(CONTENT_WRAPPER_CLASS)}`);
+    const measurer = element.querySelector(`.${escapeCssSelectorIdent(MEASURER_CLASS)}`);
+    if (!content || !contentWrapper || !measurer) {
+      throw new Error("Invalid server render");
+    }
+    return { content, contentWrapper, measurer };
+  }
   function mirrorNode(from, to) {
     removeChildren(to);
     copyChildren(from, to);
   }
 
   // src/compiler/builders.js
-  var builderMap = {
+  var versionedBuilderMap = {
     "v0": {
       "amp-layout": buildDom
     },
@@ -3783,12 +3973,19 @@
       "amp-fit-text": buildDom2
     }
   };
-  function getBuilders(versions) {
+  function wrap(buildDom3) {
+    return function wrapper(element) {
+      applyStaticLayout(element);
+      buildDom3(element);
+      element.setAttribute("i-amphtml-ssr", "");
+    };
+  }
+  function getBuilders(versions, builderMap = versionedBuilderMap) {
     const builders = {};
     for (const { component, version: version2 } of versions) {
       const builder = builderMap?.[version2]?.[component];
       if (builder) {
-        builders[component] = builder;
+        builders[component] = wrap(builder);
       }
     }
     return builders;
@@ -3796,9 +3993,9 @@
 
   // src/compiler/compile.js
   function compile(request) {
-    const { document, nodes, versions } = request ?? {};
+    const { component_versions: versions, document, nodes } = request ?? {};
     if (!versions || !(document || nodes)) {
-      throw new Error("Must provide versions and either document or nodes");
+      throw new Error("Must provide component_versions and either document or nodes");
     }
     if (document) {
       return {

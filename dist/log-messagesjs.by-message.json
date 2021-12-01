@@ -5838,5 +5838,13 @@
   "expected global \"bento\" or specific \"bento-stream-gallery\" experiment to be enabled": {
     "id": "nx",
     "message": "expected global \"bento\" or specific \"bento-stream-gallery\" experiment to be enabled"
+  },
+  "Don't use Fragment (<></>) with #core/dom/jsx. Use a root node or an array of nodes instead.": {
+    "id": "ny",
+    "message": "Don't use Fragment (<></>) with #core/dom/jsx. Use a root node or an array of nodes instead."
+  },
+  "expected global \"bento\" or specific \"bento-model\" experiment to be enabled": {
+    "id": "nz",
+    "message": "expected global \"bento\" or specific \"bento-model\" experiment to be enabled"
   }
 }
